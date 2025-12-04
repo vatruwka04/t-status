@@ -40,6 +40,7 @@
     font-weight: 700;
     color: #ffffff;
     letter-spacing: -0.5px;
+    text-align: center;
   }
 
   p.lead { 
@@ -161,8 +162,7 @@
 
     <h1>Head Office WC Status</h1>
 
-    <p class="lead">Current status of facilities: Downstairs, Upstairs, and Across the Road. Status can be updated and changes are saved in your browser.</p>
-
+    <p class="lead" style="text-align: center;">Current status of facilities: Downstairs, Upstairs, and Across the Road. Status is synchronized for all users.</p>
 
 
     <div class="grid" id="places">
@@ -190,32 +190,138 @@
 
 
   const PLACES_KEY = 'toilet_status_places_v1';
-
-
-
-  function loadState() {
-
+  const STATUS_FILE_URL = 'status.json';
+  const REPO_OWNER = 'vatruwka04';
+  const REPO_NAME = 't-status';
+  const BRANCH = 'main';
+  
+  // Токен инжектируется из GitHub Secret при деплое через GitHub Actions
+  // В исходном коде репозитория токена нет - он только в секретах
+  const GITHUB_TOKEN = '{{GITHUB_TOKEN_FROM_SECRET}}';
+  
+  // Загружаем состояние из файла на GitHub Pages
+  async function loadState() {
     try {
-
+      // Пробуем загрузить файл напрямую (работает через GitHub Pages)
+      const response = await fetch(STATUS_FILE_URL + '?t=' + Date.now()); // Добавляем timestamp для обхода кэша
+      
+      if (response.ok) {
+        const content = await response.json();
+        if (content && Object.keys(content).length > 0) {
+          // Сохраняем в localStorage для кэширования
+          localStorage.setItem(PLACES_KEY, JSON.stringify(content));
+          return content;
+        }
+      }
+    } catch(e) {
+      console.log('Failed to load from file, using cached or default');
+    }
+    
+    // Fallback на localStorage
+    try {
       const raw = localStorage.getItem(PLACES_KEY);
-
-      if (!raw) return defaultState;
-
-      return JSON.parse(raw);
-
-    } catch(e){ return defaultState; }
-
+      if (raw) {
+        return JSON.parse(raw);
+      }
+    } catch(e) {}
+    
+    return defaultState;
   }
 
-  function saveState(s) { localStorage.setItem(PLACES_KEY, JSON.stringify(s)); }
+  // Сохраняем состояние в localStorage и на GitHub
+  async function saveState(s) {
+    // Всегда сохраняем в localStorage
+    localStorage.setItem(PLACES_KEY, JSON.stringify(s));
+    
+    // Сохраняем на GitHub используя токен из секрета (инжектирован при деплое)
+    if (GITHUB_TOKEN && GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}') {
+      try {
+        // Получаем текущий SHA файла для обновления
+        let sha = null;
+        try {
+          const getResponse = await fetch(
+            `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
+            {
+              headers: {
+                'Authorization': `Bearer ${GITHUB_TOKEN}`,
+                'Accept': 'application/vnd.github.v3+json'
+              }
+            }
+          );
+          
+          if (getResponse.ok) {
+            const fileData = await getResponse.json();
+            sha = fileData.sha;
+          }
+        } catch(e) {
+          // Файл может не существовать, это нормально
+        }
+        
+        // Обновляем или создаем файл
+        const content = btoa(JSON.stringify(s, null, 2));
+        const updateResponse = await fetch(
+          `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
+          {
+            method: 'PUT',
+            headers: {
+              'Authorization': `Bearer ${GITHUB_TOKEN}`,
+              'Accept': 'application/vnd.github.v3+json',
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              message: 'Update toilet status',
+              content: content,
+              sha: sha,
+              branch: BRANCH
+            })
+          }
+        );
+        
+        if (updateResponse.ok) {
+          console.log('Status saved to GitHub successfully');
+          return true;
+        } else {
+          const error = await updateResponse.json();
+          console.error('Failed to save to GitHub:', error);
+        }
+      } catch(e) {
+        console.error('Error saving to GitHub:', e);
+      }
+    } else {
+      console.log('GitHub token not available - status saved locally only');
+    }
+    return false;
+  }
+  
 
 
 
-  let state = loadState();
-
+  let state = {};
   const placesEl = document.getElementById('places');
 
-
+  // Инициализация с асинхронной загрузкой
+  (async function init() {
+    state = await loadState();
+    renderPlaces();
+    
+    // Периодически проверяем обновления из файла (каждые 10 секунд)
+    setInterval(async () => {
+      try {
+        const response = await fetch(STATUS_FILE_URL + '?t=' + Date.now());
+        if (response.ok) {
+          const serverState = await response.json();
+          // Обновляем только если состояние изменилось
+          if (JSON.stringify(state) !== JSON.stringify(serverState)) {
+            state = serverState;
+            localStorage.setItem(PLACES_KEY, JSON.stringify(state));
+            renderPlaces();
+          }
+        }
+      } catch(e) {
+        // Игнорируем ошибки при проверке обновлений
+      }
+    }, 10000);
+  })();
 
   function renderPlaces(){
 
@@ -249,11 +355,11 @@
 
       btnToggle.textContent = state[place] === 'OK' ? 'Mark as Out of Order' : 'Mark as Working';
 
-      btnToggle.onclick = function(){
+      btnToggle.onclick = async function(){
 
         state[place] = state[place] === 'OK' ? 'NOT OK' : 'OK';
 
-        saveState(state);
+        await saveState(state);
 
         renderPlaces();
 
@@ -275,21 +381,20 @@
 
 
 
-  renderPlaces();
-
-
-
-  window.__toilet_reset = function(){
+  window.__toilet_reset = async function(){
 
     state = Object.assign({}, defaultState);
 
-    saveState(state);
+    await saveState(state);
 
     renderPlaces();
 
     alert('Status reset to default');
 
   };
+  
+  // Добавляем кнопку для настройки токена (для отладки)
+  window.__setup_token = showTokenSetup;
 
 })();
 
