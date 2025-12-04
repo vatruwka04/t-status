@@ -1,6 +1,12 @@
 {
-  "Downstairs": "NOT OK",
-  "Upstairs": "NOT OK",
-  "Across the Road": "OK"
+  "name": "wc-status-board",
+  "version": "1.0.0",
+  "description": "Shared WC status board",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.21.0"
+  }
 }
-
