@@ -339,23 +339,8 @@
     state = await loadState();
     renderPlaces();
     
-    // Периодически проверяем обновления из файла (каждые 10 секунд)
-    setInterval(async () => {
-      try {
-        const response = await fetch(STATUS_FILE_URL + '?t=' + Date.now());
-        if (response.ok) {
-          const serverState = await response.json();
-          // Обновляем только если состояние изменилось
-          if (JSON.stringify(state) !== JSON.stringify(serverState)) {
-            state = serverState;
-            localStorage.setItem(PLACES_KEY, JSON.stringify(state));
-            renderPlaces();
-          }
-        }
-      } catch(e) {
-        // Игнорируем ошибки при проверке обновлений
-      }
-    }, 10000);
+    // Автоматическая синхронизация отключена - статус обновляется только при загрузке страницы
+    // и после нажатия кнопки, чтобы избежать конфликтов при одновременном редактировании
   })();
 
   function renderPlaces(){
