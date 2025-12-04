@@ -27,12 +27,13 @@ jobs:
           TOKEN="${{ secrets.t_status_token }}"
           if [ -z "$TOKEN" ]; then
             echo "Warning: t_status_token secret not found"
-            # Оставляем плейсхолдер если секрет не найден
-            echo "Token secret not configured"
+            echo "Token secret not configured - leaving placeholder"
           else
             # Заменяем плейсхолдер на реальный токен из секрета
-            # Используем perl для безопасной замены
-            perl -i -pe "s|\\{\\{GITHUB_TOKEN_FROM_SECRET\\}\\}|$TOKEN|g" index.html
+            # Экранируем специальные символы для sed
+            ESCAPED_TOKEN=$(echo "$TOKEN" | sed 's/[[\.*^$()+?{|]/\\&/g')
+            sed -i.bak "s|{{GITHUB_TOKEN_FROM_SECRET}}|$ESCAPED_TOKEN|g" index.html
+            rm -f index.html.bak
             echo "Token injected successfully"
           fi
 
