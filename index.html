@@ -1,423 +1,143 @@
-<!DOCTYPE html>
-
-<html lang="en">
-
-<head>
-
-<meta charset="utf-8" />
-
-<meta name="viewport" content="width=device-width,initial-scale=1" />
-
-<title>Head Office WC Status</title>
-
-<style>
-
-  * { box-sizing: border-box; }
-
-  body { 
-    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Inter, Arial, sans-serif; 
-    background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
-    color: #f1f5f9; 
-    margin: 0; 
-    padding: 40px 20px; 
-    min-height: 100vh;
-  }
-
-  .wrap { 
-    max-width: 1200px; 
-    margin: 0 auto; 
-    background: rgba(30, 41, 59, 0.8);
-    backdrop-filter: blur(10px);
-    border-radius: 24px; 
-    padding: 48px; 
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.4);
-    border: 1px solid rgba(148, 163, 184, 0.1);
-  }
-
-  h1 { 
-    margin: 0 0 16px 0; 
-    font-size: 32px; 
-    font-weight: 700;
-    color: #ffffff;
-    letter-spacing: -0.5px;
-    text-align: center;
-  }
-
-  p.lead { 
-    margin: 0 0 40px 0; 
-    color: #cbd5e1; 
-    font-size: 16px;
-    line-height: 1.6;
-  }
-
-  .grid { 
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-    gap: 24px; 
-    margin-bottom: 32px; 
-  }
-
-  .card { 
-    padding: 32px; 
-    border-radius: 20px; 
-    border: 2px solid rgba(148, 163, 184, 0.15); 
-    background: rgba(15, 23, 42, 0.6);
-    backdrop-filter: blur(8px);
-    transition: all 0.3s ease;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-  }
-
-  .card:hover {
-    transform: translateY(-4px);
-    border-color: rgba(148, 163, 184, 0.3);
-    box-shadow: 0 12px 40px rgba(0, 0, 0, 0.3);
-  }
-
-  .place { 
-    font-weight: 600; 
-    font-size: 18px; 
-    margin-bottom: 24px; 
-    color: #e2e8f0;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-  }
-
-  .status { 
-    font-size: 48px; 
-    font-weight: 800; 
-    padding: 24px 32px; 
-    border-radius: 16px; 
-    display: inline-block; 
-    min-width: 200px; 
-    text-align: center;
-    margin-bottom: 20px;
-    letter-spacing: 2px;
-    text-transform: uppercase;
-  }
-
-  .ok { 
-    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
-    color: #ffffff; 
-    border: 2px solid #34d399;
-    box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
-  }
-
-  .bad { 
-    background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
-    color: #ffffff; 
-    border: 2px solid #f87171;
-    box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3);
-  }
-
-  .btn { 
-    margin-top: 16px; 
-    padding: 12px 24px; 
-    border-radius: 12px; 
-    border: 0; 
-    cursor: pointer; 
-    font-weight: 600;
-    font-size: 14px;
-    transition: all 0.2s ease;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-  }
-
-  .btn:hover {
-    transform: scale(1.05);
-  }
-
-  .btn:active {
-    transform: scale(0.98);
-  }
-
-  .btn-toggle { 
-    background: rgba(255, 255, 255, 0.1);
-    color: #ffffff; 
-    border: 1px solid rgba(255, 255, 255, 0.2);
-  }
-
-  .btn-toggle:hover {
-    background: rgba(255, 255, 255, 0.15);
-    border-color: rgba(255, 255, 255, 0.3);
-  }
-
-  .controls { 
-    display: flex; 
-    gap: 8px; 
-    margin-top: 8px; 
-    flex-wrap: wrap; 
-    justify-content: center;
-  }
-
-</style>
-
-</head>
-
-<body>
-
-  <div class="wrap">
-
-    <h1>Head Office WC Status</h1>
-
-    <div class="grid" id="places">
-
-    </div>
-
-  </div>
-
-
-
 <script>
-
-(function(){
-
+(function () {
   const defaultState = {
-
     "Downstairs": "NOT OK",
-
     "Upstairs": "NOT OK",
-
     "Across the Road": "OK"
-
   };
 
+  // общий ключ для кеша в браузере (опционально, просто чтобы не дёргать API лишний раз)
+  const PLACES_KEY = 'toilet_status_places_v2';
 
-
-  const PLACES_KEY = 'toilet_status_places_v1';
-  const STATUS_FILE_URL = 'status.json';
-  const REPO_OWNER = 'vatruwka04';
-  const REPO_NAME = 't-status';
-  const BRANCH = 'main';
-  
-  // Токен инжектируется из GitHub Secret при деплое через GitHub Actions
-  // В исходном коде репозитория токена нет - он только в секретах
-  const GITHUB_TOKEN = '{{GITHUB_TOKEN_FROM_SECRET}}';
-  
-  // Загружаем состояние из файла на GitHub Pages
-  async function loadState() {
-    try {
-      // Пробуем загрузить файл напрямую (работает через GitHub Pages)
-      const response = await fetch(STATUS_FILE_URL + '?t=' + Date.now()); // Добавляем timestamp для обхода кэша
-      
-      if (response.ok) {
-        const content = await response.json();
-        if (content && Object.keys(content).length > 0) {
-          console.log('Loaded status from file:', content);
-          // Сохраняем в localStorage для кэширования
-          localStorage.setItem(PLACES_KEY, JSON.stringify(content));
-          return content;
-        } else {
-          console.log('File exists but is empty, using fallback');
-        }
-      } else {
-        console.log('Failed to load file, status:', response.status);
-      }
-    } catch(e) {
-      console.log('Failed to load from file, using cached or default:', e);
-    }
-    
-    // Fallback на localStorage
-    try {
-      const raw = localStorage.getItem(PLACES_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        console.log('Loaded status from localStorage:', parsed);
-        return parsed;
-      }
-    } catch(e) {
-      console.error('Error parsing localStorage:', e);
-    }
-    
-    console.log('Using default state');
-    return defaultState;
-  }
-
-  // Сохраняем состояние в localStorage и на GitHub
-  async function saveState(s) {
-    // Всегда сохраняем в localStorage
-    localStorage.setItem(PLACES_KEY, JSON.stringify(s));
-    
-    // Проверяем наличие токена (должен быть инжектирован из секрета)
-    // Токен должен быть заменен на реальный при деплое
-    const isPlaceholder = GITHUB_TOKEN === '{{GITHUB_TOKEN_FROM_SECRET}}';
-    const token = !isPlaceholder && GITHUB_TOKEN && GITHUB_TOKEN.length > 10 ? GITHUB_TOKEN : null;
-    
-    if (!token) {
-      console.warn('GitHub token not available - status saved locally only.');
-      console.warn('Token check:', {
-        exists: !!GITHUB_TOKEN,
-        isPlaceholder: isPlaceholder,
-        tokenLength: GITHUB_TOKEN?.length || 0
-      });
-      return false;
-    }
-    
-    console.log('Using GitHub token for saving (length:', token.length, 'chars)');
-    
-    // Сохраняем на GitHub используя токен из секрета (инжектирован при деплое)
-    try {
-      // Получаем текущий SHA файла для обновления
-      let sha = null;
-      try {
-        const getResponse = await fetch(
-          `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
-          {
-            headers: {
-              'Authorization': `Bearer ${token}`,
-              'Accept': 'application/vnd.github.v3+json'
-            }
-          }
-        );
-        
-        if (getResponse.ok) {
-          const fileData = await getResponse.json();
-          sha = fileData.sha;
-          console.log('Got file SHA:', sha);
-        } else if (getResponse.status === 404) {
-          console.log('File does not exist yet, will create new one');
-        } else {
-          const errorData = await getResponse.json();
-          console.error('Failed to get file SHA:', errorData);
-        }
-      } catch(e) {
-        console.error('Error getting file SHA:', e);
-      }
-      
-      // Обновляем или создаем файл
-      const content = btoa(JSON.stringify(s, null, 2));
-      const updateResponse = await fetch(
-        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
-        {
-          method: 'PUT',
-          headers: {
-            'Authorization': `Bearer ${token}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify({
-            message: 'Update toilet status',
-            content: content,
-            sha: sha,
-            branch: BRANCH
-          })
-        }
-      );
-      
-      if (updateResponse.ok) {
-        const result = await updateResponse.json();
-        console.log('Status saved to GitHub successfully:', result.commit.html_url);
-        return true;
-      } else {
-        const error = await updateResponse.json();
-        console.error('Failed to save to GitHub:', error);
-        if (error.message) {
-          console.error('Error message:', error.message);
-        }
-        return false;
-      }
-    } catch(e) {
-      console.error('Error saving to GitHub:', e);
-      return false;
-    }
-  }
-  
-
-
+  // URL твоего бекенда. Если HTML и API на одном домене — можно просто '/status'
+  const API_URL = '/status';
 
   let state = {};
   const placesEl = document.getElementById('places');
 
-  // Инициализация с асинхронной загрузкой
-  (async function init() {
-    // Логируем информацию о токене (без самого токена)
-    console.log('Token available:', GITHUB_TOKEN && GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}' ? 'Yes' : 'No');
-    console.log('Token placeholder:', GITHUB_TOKEN === '{{GITHUB_TOKEN_FROM_SECRET}}' ? 'Still present' : 'Replaced');
-    
-    state = await loadState();
-    renderPlaces();
-    
-    // Автоматическая синхронизация отключена - статус обновляется только при загрузке страницы
-    // и после нажатия кнопки, чтобы избежать конфликтов при одновременном редактировании
-  })();
+  async function loadState() {
+    // 1. сначала пробуем сходить на сервер — это и даёт шаринг между людьми/браузерами
+    try {
+      const resp = await fetch(API_URL, { cache: 'no-store' });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && typeof data === 'object') {
+          console.log('Loaded state from API:', data);
+          // сохраним в localStorage как кеш
+          localStorage.setItem(PLACES_KEY, JSON.stringify(data));
+          // подстраховка: если в defaultState появятся новые ключи — они появятся и тут
+          return { ...defaultState, ...data };
+        }
+      } else {
+        console.warn('API returned non-OK status:', resp.status);
+      }
+    } catch (e) {
+      console.error('Error loading state from API, fallback to local:', e);
+    }
 
-  function renderPlaces(){
+    // 2. если API не ответил — берём кеш из localStorage
+    try {
+      const raw = localStorage.getItem(PLACES_KEY);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        console.log('Loaded state from localStorage:', parsed);
+        return { ...defaultState, ...parsed };
+      }
+    } catch (e) {
+      console.error('Error loading state from localStorage:', e);
+    }
 
+    // 3. если совсем ничего нет — дефолт
+    console.log('Using default state');
+    return { ...defaultState };
+  }
+
+  async function saveStateRemote(s) {
+    try {
+      const resp = await fetch(API_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(s)
+      });
+
+      if (!resp.ok) {
+        console.warn('Failed to save state to API, status:', resp.status);
+        return false;
+      }
+
+      console.log('State saved to API successfully');
+      return true;
+    } catch (e) {
+      console.error('Error saving state to API:', e);
+      return false;
+    }
+  }
+
+  async function saveState(s) {
+    // всегда сохраняем локально как кеш
+    try {
+      localStorage.setItem(PLACES_KEY, JSON.stringify(s));
+    } catch (e) {
+      console.error('Error saving state to localStorage:', e);
+    }
+
+    // и пробуем сохранить на сервер (если не получится — UI всё равно обновится локально)
+    await saveStateRemote(s);
+  }
+
+  function renderPlaces() {
     placesEl.innerHTML = '';
 
-    Object.keys(state).forEach(place=>{
+    Object.keys(state).forEach((place) => {
+      const isOk = state[place] === 'OK';
 
       const card = document.createElement('div');
-
       card.className = 'card';
 
       const placeName = document.createElement('div');
-
       placeName.className = 'place';
-
       placeName.textContent = place;
 
       const status = document.createElement('div');
-
-      status.className = 'status ' + (state[place] === 'OK' ? 'ok' : 'bad');
-
-      status.textContent = state[place] === 'OK' ? 'WORKING OK' : 'OUT OF ORDER';
+      status.className = 'status ' + (isOk ? 'ok' : 'bad');
+      status.textContent = isOk ? 'WORKING OK' : 'OUT OF ORDER';
 
       const controls = document.createElement('div');
-
       controls.className = 'controls';
 
       const btnToggle = document.createElement('button');
-
       btnToggle.className = 'btn btn-toggle';
+      btnToggle.textContent = isOk ? 'Mark as Out of Order' : 'Mark as Working';
 
-      btnToggle.textContent = state[place] === 'OK' ? 'Mark as Out of Order' : 'Mark as Working';
-
-      btnToggle.onclick = async function(){
-
-        state[place] = state[place] === 'OK' ? 'NOT OK' : 'OK';
-
+      btnToggle.onclick = async function () {
+        const current = state[place] === 'OK';
+        state[place] = current ? 'NOT OK' : 'OK';
         await saveState(state);
-
         renderPlaces();
-
       };
 
       controls.appendChild(btnToggle);
 
       card.appendChild(placeName);
-
       card.appendChild(status);
-
       card.appendChild(controls);
 
       placesEl.appendChild(card);
-
     });
-
   }
 
-
-
-  window.__toilet_reset = async function(){
-
-    state = Object.assign({}, defaultState);
-
-    await saveState(state);
-
+  // init
+  (async function init() {
+    state = await loadState();
     renderPlaces();
+  })();
 
+  // reset для отладки / админа
+  window.__toilet_reset = async function () {
+    state = { ...defaultState };
+    await saveState(state);
+    renderPlaces();
     alert('Status reset to default');
-
   };
-
 })();
-
 </script>
-
-</body>
-
-</html>
-
