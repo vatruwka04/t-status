@@ -1,143 +1,267 @@
-<script>
-(function () {
-  const defaultState = {
-    "Downstairs": "NOT OK",
-    "Upstairs": "NOT OK",
-    "Across the Road": "OK"
-  };
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Head Office WC Status</title>
 
-  // общий ключ для кеша в браузере (опционально, просто чтобы не дёргать API лишний раз)
-  const PLACES_KEY = 'toilet_status_places_v2';
+  <style>
+    * { box-sizing: border-box; }
 
-  // URL твоего бекенда. Если HTML и API на одном домене — можно просто '/status'
-  const API_URL = '/status';
-
-  let state = {};
-  const placesEl = document.getElementById('places');
-
-  async function loadState() {
-    // 1. сначала пробуем сходить на сервер — это и даёт шаринг между людьми/браузерами
-    try {
-      const resp = await fetch(API_URL, { cache: 'no-store' });
-      if (resp.ok) {
-        const data = await resp.json();
-        if (data && typeof data === 'object') {
-          console.log('Loaded state from API:', data);
-          // сохраним в localStorage как кеш
-          localStorage.setItem(PLACES_KEY, JSON.stringify(data));
-          // подстраховка: если в defaultState появятся новые ключи — они появятся и тут
-          return { ...defaultState, ...data };
-        }
-      } else {
-        console.warn('API returned non-OK status:', resp.status);
-      }
-    } catch (e) {
-      console.error('Error loading state from API, fallback to local:', e);
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, Arial, sans-serif;
+      background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%);
+      color: #f1f5f9;
+      margin: 0;
+      padding: 40px 20px;
+      min-height: 100vh;
     }
 
-    // 2. если API не ответил — берём кеш из localStorage
-    try {
-      const raw = localStorage.getItem(PLACES_KEY);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        console.log('Loaded state from localStorage:', parsed);
-        return { ...defaultState, ...parsed };
-      }
-    } catch (e) {
-      console.error('Error loading state from localStorage:', e);
+    .wrap {
+      max-width: 960px;
+      margin: 0 auto;
     }
 
-    // 3. если совсем ничего нет — дефолт
-    console.log('Using default state');
-    return { ...defaultState };
-  }
-
-  async function saveStateRemote(s) {
-    try {
-      const resp = await fetch(API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(s)
-      });
-
-      if (!resp.ok) {
-        console.warn('Failed to save state to API, status:', resp.status);
-        return false;
-      }
-
-      console.log('State saved to API successfully');
-      return true;
-    } catch (e) {
-      console.error('Error saving state to API:', e);
-      return false;
-    }
-  }
-
-  async function saveState(s) {
-    // всегда сохраняем локально как кеш
-    try {
-      localStorage.setItem(PLACES_KEY, JSON.stringify(s));
-    } catch (e) {
-      console.error('Error saving state to localStorage:', e);
+    h1 {
+      margin: 0 0 8px;
+      font-size: 32px;
+      font-weight: 800;
+      letter-spacing: 1px;
     }
 
-    // и пробуем сохранить на сервер (если не получится — UI всё равно обновится локально)
-    await saveStateRemote(s);
-  }
+    .subtitle {
+      margin-bottom: 32px;
+      color: #94a3b8;
+      font-size: 14px;
+    }
 
-  function renderPlaces() {
-    placesEl.innerHTML = '';
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 20px;
+    }
 
-    Object.keys(state).forEach((place) => {
-      const isOk = state[place] === 'OK';
+    .card {
+      background: rgba(15, 23, 42, 0.9);
+      border-radius: 16px;
+      padding: 20px 20px 24px;
+      border: 1px solid rgba(148, 163, 184, 0.25);
+      box-shadow: 0 18px 40px rgba(15, 23, 42, 0.6);
+      text-align: center;
+    }
 
-      const card = document.createElement('div');
-      card.className = 'card';
+    .place {
+      font-size: 20px;
+      font-weight: 600;
+      margin-bottom: 12px;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      color: #e2e8f0;
+    }
 
-      const placeName = document.createElement('div');
-      placeName.className = 'place';
-      placeName.textContent = place;
+    .status {
+      font-size: 20px;
+      font-weight: 800;
+      padding: 16px 20px;
+      border-radius: 14px;
+      display: inline-block;
+      min-width: 210px;
+      text-align: center;
+      margin-bottom: 18px;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+    }
 
-      const status = document.createElement('div');
-      status.className = 'status ' + (isOk ? 'ok' : 'bad');
-      status.textContent = isOk ? 'WORKING OK' : 'OUT OF ORDER';
+    .ok {
+      background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+      color: #ffffff;
+      border: 2px solid #34d399;
+      box-shadow: 0 8px 24px rgba(16, 185, 129, 0.3);
+    }
 
-      const controls = document.createElement('div');
-      controls.className = 'controls';
+    .bad {
+      background: linear-gradient(135deg, #ef4444 0%, #dc2626 100%);
+      color: #ffffff;
+      border: 2px solid #f87171;
+      box-shadow: 0 8px 24px rgba(239, 68, 68, 0.3);
+    }
 
-      const btnToggle = document.createElement('button');
-      btnToggle.className = 'btn btn-toggle';
-      btnToggle.textContent = isOk ? 'Mark as Out of Order' : 'Mark as Working';
+    .controls {
+      display: flex;
+      justify-content: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
 
-      btnToggle.onclick = async function () {
-        const current = state[place] === 'OK';
-        state[place] = current ? 'NOT OK' : 'OK';
-        await saveState(state);
-        renderPlaces();
+    .btn {
+      border-radius: 999px;
+      padding: 8px 16px;
+      border: 1px solid rgba(148, 163, 184, 0.4);
+      background: rgba(15, 23, 42, 0.7);
+      color: #e5e7eb;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+
+    .btn:hover {
+      background: rgba(51, 65, 85, 0.9);
+      border-color: rgba(148, 163, 184, 0.8);
+    }
+
+    .footer {
+      margin-top: 32px;
+      font-size: 11px;
+      color: #64748b;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="wrap">
+    <h1>Head Office WC Status</h1>
+    <div class="subtitle">Shared status board for all staff. Click to update.</div>
+
+    <div class="grid" id="places"></div>
+
+    <div class="footer">
+      Tip: статус сохраняется на сервере и общий для всех пользователей этой страницы.
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const defaultState = {
+        "Downstairs": "NOT OK",
+        "Upstairs": "NOT OK",
+        "Across the Road": "OK"
       };
 
-      controls.appendChild(btnToggle);
+      const PLACES_KEY = 'toilet_status_places_v2';
+      const API_URL = '/status';
 
-      card.appendChild(placeName);
-      card.appendChild(status);
-      card.appendChild(controls);
+      let state = {};
+      const placesEl = document.getElementById('places');
 
-      placesEl.appendChild(card);
-    });
-  }
+      async function loadState() {
+        // 1. Сначала пробуем взять с сервера
+        try {
+          const resp = await fetch(API_URL, { cache: 'no-store' });
+          if (resp.ok) {
+            const data = await resp.json();
+            if (data && typeof data === 'object') {
+              localStorage.setItem(PLACES_KEY, JSON.stringify(data));
+              return { ...defaultState, ...data };
+            }
+          } else {
+            console.warn('API returned non-OK status:', resp.status);
+          }
+        } catch (e) {
+          console.error('Error loading from API, fallback to local:', e);
+        }
 
-  // init
-  (async function init() {
-    state = await loadState();
-    renderPlaces();
-  })();
+        // 2. Потом пробуем локальный кеш
+        try {
+          const raw = localStorage.getItem(PLACES_KEY);
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            return { ...defaultState, ...parsed };
+          }
+        } catch (e) {
+          console.error('Error reading localStorage:', e);
+        }
 
-  // reset для отладки / админа
-  window.__toilet_reset = async function () {
-    state = { ...defaultState };
-    await saveState(state);
-    renderPlaces();
-    alert('Status reset to default');
-  };
-})();
-</script>
+        // 3. Если ничего нет — дефолт
+        return { ...defaultState };
+      }
+
+      async function saveStateRemote(s) {
+        try {
+          const resp = await fetch(API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(s)
+          });
+
+          if (!resp.ok) {
+            console.warn('Failed to save state to API, status:', resp.status);
+            return false;
+          }
+
+          return true;
+        } catch (e) {
+          console.error('Error saving state to API:', e);
+          return false;
+        }
+      }
+
+      async function saveState(s) {
+        // Сохраняем локально как кеш
+        try {
+          localStorage.setItem(PLACES_KEY, JSON.stringify(s));
+        } catch (e) {
+          console.error('Error saving to localStorage:', e);
+        }
+
+        // И отправляем на сервер
+        await saveStateRemote(s);
+      }
+
+      function renderPlaces() {
+        placesEl.innerHTML = '';
+
+        Object.keys(state).forEach((place) => {
+          const isOk = state[place] === 'OK';
+
+          const card = document.createElement('div');
+          card.className = 'card';
+
+          const placeName = document.createElement('div');
+          placeName.className = 'place';
+          placeName.textContent = place;
+
+          const statusEl = document.createElement('div');
+          statusEl.className = 'status ' + (isOk ? 'ok' : 'bad');
+          statusEl.textContent = isOk ? 'WORKING OK' : 'OUT OF ORDER';
+
+          const controls = document.createElement('div');
+          controls.className = 'controls';
+
+          const btnToggle = document.createElement('button');
+          btnToggle.className = 'btn';
+          btnToggle.textContent = isOk ? 'Mark as Out of Order' : 'Mark as Working';
+
+          btnToggle.onclick = async function () {
+            const current = state[place] === 'OK';
+            state[place] = current ? 'NOT OK' : 'OK';
+            await saveState(state);
+            renderPlaces();
+          };
+
+          controls.appendChild(btnToggle);
+
+          card.appendChild(placeName);
+          card.appendChild(statusEl);
+          card.appendChild(controls);
+
+          placesEl.appendChild(card);
+        });
+      }
+
+      (async function init() {
+        state = await loadState();
+        renderPlaces();
+      })();
+
+      // Для отладки: window.__toilet_reset()
+      window.__toilet_reset = async function () {
+        state = { ...defaultState };
+        await saveState(state);
+        renderPlaces();
+        alert('Status reset to default');
+      };
+    })();
+  </script>
+</body>
+</html>
