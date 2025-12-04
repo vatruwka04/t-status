@@ -241,20 +241,21 @@
     localStorage.setItem(PLACES_KEY, JSON.stringify(s));
     
     // Проверяем наличие токена (должен быть инжектирован из секрета)
-    const token = GITHUB_TOKEN && 
-                  GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}' && 
-                  GITHUB_TOKEN.startsWith('ghp_') ? GITHUB_TOKEN : null;
+    // Токен должен быть заменен на реальный при деплое
+    const isPlaceholder = GITHUB_TOKEN === '{{GITHUB_TOKEN_FROM_SECRET}}';
+    const token = !isPlaceholder && GITHUB_TOKEN && GITHUB_TOKEN.length > 10 ? GITHUB_TOKEN : null;
     
     if (!token) {
       console.warn('GitHub token not available - status saved locally only.');
       console.warn('Token check:', {
         exists: !!GITHUB_TOKEN,
-        isPlaceholder: GITHUB_TOKEN === '{{GITHUB_TOKEN_FROM_SECRET}}',
-        startsWithGhp: GITHUB_TOKEN?.startsWith('ghp_'),
-        tokenLength: GITHUB_TOKEN?.length
+        isPlaceholder: isPlaceholder,
+        tokenLength: GITHUB_TOKEN?.length || 0
       });
       return false;
     }
+    
+    console.log('Using GitHub token for saving (length:', token.length, 'chars)');
     
     // Сохраняем на GitHub используя токен из секрета (инжектирован при деплое)
     try {
