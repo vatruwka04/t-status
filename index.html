@@ -208,23 +208,33 @@
       if (response.ok) {
         const content = await response.json();
         if (content && Object.keys(content).length > 0) {
+          console.log('Loaded status from file:', content);
           // Сохраняем в localStorage для кэширования
           localStorage.setItem(PLACES_KEY, JSON.stringify(content));
           return content;
+        } else {
+          console.log('File exists but is empty, using fallback');
         }
+      } else {
+        console.log('Failed to load file, status:', response.status);
       }
     } catch(e) {
-      console.log('Failed to load from file, using cached or default');
+      console.log('Failed to load from file, using cached or default:', e);
     }
     
     // Fallback на localStorage
     try {
       const raw = localStorage.getItem(PLACES_KEY);
       if (raw) {
-        return JSON.parse(raw);
+        const parsed = JSON.parse(raw);
+        console.log('Loaded status from localStorage:', parsed);
+        return parsed;
       }
-    } catch(e) {}
+    } catch(e) {
+      console.error('Error parsing localStorage:', e);
+    }
     
+    console.log('Using default state');
     return defaultState;
   }
 
@@ -233,64 +243,80 @@
     // Всегда сохраняем в localStorage
     localStorage.setItem(PLACES_KEY, JSON.stringify(s));
     
+    // Проверяем наличие токена
+    const token = GITHUB_TOKEN && GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}' ? GITHUB_TOKEN : null;
+    
+    if (!token) {
+      console.warn('GitHub token not available - status saved locally only. Token value:', GITHUB_TOKEN ? 'present but invalid' : 'missing');
+      return false;
+    }
+    
     // Сохраняем на GitHub используя токен из секрета (инжектирован при деплое)
-    if (GITHUB_TOKEN && GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}') {
+    try {
       try {
-        // Получаем текущий SHA файла для обновления
-        let sha = null;
-        try {
-          const getResponse = await fetch(
-            `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
-            {
-              headers: {
-                'Authorization': `Bearer ${GITHUB_TOKEN}`,
-                'Accept': 'application/vnd.github.v3+json'
-              }
-            }
-          );
-          
-          if (getResponse.ok) {
-            const fileData = await getResponse.json();
-            sha = fileData.sha;
-          }
-        } catch(e) {
-          // Файл может не существовать, это нормально
-        }
-        
-        // Обновляем или создаем файл
-        const content = btoa(JSON.stringify(s, null, 2));
-        const updateResponse = await fetch(
+      // Получаем текущий SHA файла для обновления
+      let sha = null;
+      try {
+        const getResponse = await fetch(
           `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
           {
-            method: 'PUT',
             headers: {
-              'Authorization': `Bearer ${GITHUB_TOKEN}`,
-              'Accept': 'application/vnd.github.v3+json',
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              message: 'Update toilet status',
-              content: content,
-              sha: sha,
-              branch: BRANCH
-            })
+              'Authorization': `Bearer ${token}`,
+              'Accept': 'application/vnd.github.v3+json'
+            }
           }
         );
         
-        if (updateResponse.ok) {
-          console.log('Status saved to GitHub successfully');
-          return true;
+        if (getResponse.ok) {
+          const fileData = await getResponse.json();
+          sha = fileData.sha;
+          console.log('Got file SHA:', sha);
+        } else if (getResponse.status === 404) {
+          console.log('File does not exist yet, will create new one');
         } else {
-          const error = await updateResponse.json();
-          console.error('Failed to save to GitHub:', error);
+          const errorData = await getResponse.json();
+          console.error('Failed to get file SHA:', errorData);
         }
       } catch(e) {
-        console.error('Error saving to GitHub:', e);
+        console.error('Error getting file SHA:', e);
       }
-    } else {
-      console.log('GitHub token not available - status saved locally only');
+      
+      // Обновляем или создаем файл
+      const content = btoa(JSON.stringify(s, null, 2));
+      const updateResponse = await fetch(
+        `https://api.github.com/repos/${REPO_OWNER}/${REPO_NAME}/contents/${STATUS_FILE_URL}`,
+        {
+          method: 'PUT',
+          headers: {
+            'Authorization': `Bearer ${token}`,
+            'Accept': 'application/vnd.github.v3+json',
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({
+            message: 'Update toilet status',
+            content: content,
+            sha: sha,
+            branch: BRANCH
+          })
+        }
+      );
+      
+      if (updateResponse.ok) {
+        const result = await updateResponse.json();
+        console.log('Status saved to GitHub successfully:', result.commit.html_url);
+        return true;
+      } else {
+        const error = await updateResponse.json();
+        console.error('Failed to save to GitHub:', error);
+        if (error.message) {
+          console.error('Error message:', error.message);
+        }
+        return false;
+      }
+    } catch(e) {
+      console.error('Error saving to GitHub:', e);
+      return false;
     }
-    return false;
   }
   
 
@@ -301,6 +327,10 @@
 
   // Инициализация с асинхронной загрузкой
   (async function init() {
+    // Логируем информацию о токене (без самого токена)
+    console.log('Token available:', GITHUB_TOKEN && GITHUB_TOKEN !== '{{GITHUB_TOKEN_FROM_SECRET}}' ? 'Yes' : 'No');
+    console.log('Token placeholder:', GITHUB_TOKEN === '{{GITHUB_TOKEN_FROM_SECRET}}' ? 'Still present' : 'Replaced');
+    
     state = await loadState();
     renderPlaces();
     

@@ -30,11 +30,16 @@ jobs:
             echo "Token secret not configured - leaving placeholder"
           else
             # Заменяем плейсхолдер на реальный токен из секрета
-            # Экранируем специальные символы для sed
-            ESCAPED_TOKEN=$(echo "$TOKEN" | sed 's/[[\.*^$()+?{|]/\\&/g')
-            sed -i.bak "s|{{GITHUB_TOKEN_FROM_SECRET}}|$ESCAPED_TOKEN|g" index.html
-            rm -f index.html.bak
-            echo "Token injected successfully"
+            # Используем perl для более надежной замены
+            perl -i -pe "s|\\{\\{GITHUB_TOKEN_FROM_SECRET\\}\\}|$TOKEN|g" index.html
+            echo "Token injected successfully (length: ${#TOKEN} chars)"
+            # Проверяем, что замена произошла
+            if grep -q "{{GITHUB_TOKEN_FROM_SECRET}}" index.html; then
+              echo "ERROR: Token placeholder still found in file!"
+              exit 1
+            else
+              echo "Token replacement verified"
+            fi
           fi
 
       - name: Setup Pages
